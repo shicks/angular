@@ -36,7 +36,7 @@ export const ISO8601_DATE_REGEX =
 //    1        2       3         4          5          6          7          8  9     10      11
 const NAMED_FORMATS: {[localeId: string]: {[format: string]: string}} = {};
 const DATE_FORMATS_SPLIT =
-  /((?:[^BEGHLMOSWYZabcdhmswyz']+)|(?:'(?:[^']|'')*')|(?:G{1,5}|y{1,4}|Y{1,4}|M{1,5}|L{1,5}|w{1,2}|W{1}|d{1,2}|E{1,6}|c{1,6}|a{1,5}|b{1,5}|B{1,5}|h{1,2}|H{1,2}|m{1,2}|s{1,2}|S{1,3}|z{1,4}|Z{1,5}|O{1,4}))([\s\S]*)/;
+  /((?:[^BEGHLMOSWYZabcdhmswyz'!]+)|(?:'(?:[^']|'')*')|(?:!|G{1,5}|y{1,4}|Y{1,4}|M{1,5}|L{1,5}|w{1,2}|W{1}|d{1,2}|E{1,6}|c{1,6}|a{1,5}|b{1,5}|B{1,5}|h{1,2}|H{1,2}|m{1,2}|s{1,2}|S{1,3}|z{1,4}|Z{1,5}|O{1,4}))([\s\S]*)/;
 
 const enum ZoneWidth {
   Short,
@@ -139,20 +139,33 @@ export function formatDate(
  * log a warning).  This should only be called in development mode.
  */
 function assertValidDateFormat(parts: string[]) {
+  // "!" suppresses any validity checking.
+  const suppress = parts.some((part) => part === '!');
+
   if (parts.some((part) => /^Y+$/.test(part)) && !parts.some((part) => /^w+$/.test(part))) {
     // "Y" indicates "week-based year", which differs from the actual calendar
     // year for a few days around Jan 1 most years.  Unless "w" is also
     // present (e.g. a date like "2024-W52") this is likely a mistake.  Users
     // probably meant "y" instead.
-    const message = `Suspicious use of week-based year "Y" in date pattern "${parts.join(
-      '',
-    )}". Did you mean to use calendar year "y" instead?`;
-    if (parts.length === 1) {
-      // NOTE: allow "YYYY" with just a warning, since it's used in tests.
-      console.error(formatRuntimeError(RuntimeErrorCode.SUSPICIOUS_DATE_FORMAT, message));
-    } else {
-      throw new RuntimeError(RuntimeErrorCode.SUSPICIOUS_DATE_FORMAT, message);
+    if (!suppress) {
+      throw new RuntimeError(
+        RuntimeErrorCode.SUSPICIOUS_DATE_FORMAT,
+        `Suspicious use of week-based year "Y" in date pattern "${
+          parts.join('')}". Did you mean to use calendar year "y" instead? ` +
+          `If this is intended, use "Y!" to suppress this error.`,
+      );
     }
+  } else if (suppress) {
+    // Give a warning for "unnecessary suppression" because it probably indicates
+    // someone was trying to use an unquoted "!" as a literal, and we've changed
+    // that behavior.  This warning could be removed at some point in the future,
+    // once we have confidence that most people have fixed any broken usages.
+    throw new RuntimeError(
+      RuntimeErrorCode.SUSPICIOUS_DATE_FORMAT,
+      `NOTE: Angular v20 introduced new validity checks for date formats, which ` +
+        `can be suppressed with "!". To include a literal "!" in the output, it ` +
+        `must now be quoted as "'!'".`,
+    );
   }
 }
 
@@ -858,6 +871,9 @@ function getDateFormatter(format: string): DateFormatter | null {
     // Should be location, but fallback to format O instead because we don't have the data yet
     case 'zzzz':
       formatter = timeZoneGetter(ZoneWidth.Long);
+      break;
+    case '!':
+      formatter = () => '';
       break;
     default:
       return null;

@@ -106,10 +106,10 @@ describe('Format date', () => {
         yy: '15',
         yyy: '2015',
         yyyy: '2015',
-        Y: '2015',
-        YY: '15',
-        YYY: '2015',
-        YYYY: '2015',
+        'Y!': '2015',
+        'YY!': '15',
+        'YYY!': '2015',
+        'YYYY!': '2015',
         M: '6',
         MM: '06',
         MMM: 'Jun',
@@ -174,10 +174,10 @@ describe('Format date', () => {
         yy: '15',
         yyy: '2015',
         yyyy: '2015',
-        Y: '2015',
-        YY: '15',
-        YYY: '2015',
-        YYYY: '2015',
+        'Y!': '2015',
+        'YY!': '15',
+        'YYY!': '2015',
+        'YYYY!': '2015',
         M: '1',
         MM: '01',
         MMM: 'Jan',
@@ -245,14 +245,6 @@ describe('Format date', () => {
         BBBB: 'at night',
         BBBBB: 'at night',
       };
-
-      // Suppress console warnings for 'YYYY' patterns.
-      const consoleError = console.error;
-      spyOn(console, 'error').and.callFake((...args: unknown[]) => {
-        if (!/Suspicious use of week-based year/.test(String(args))) {
-          consoleError(...args);
-        }
-      });
 
       Object.keys(dateFixtures).forEach((pattern: string) => {
         expectDateFormatAs(date, pattern, dateFixtures[pattern]);
@@ -475,6 +467,10 @@ describe('Format date', () => {
       expect(() => formatDate('2013-12-31', `YYYY/MM/dd`, ɵDEFAULT_LOCALE_ID)).toThrowError(
         /.*Suspicious use of week-based year "Y".*/,
       );
+    });
+
+    it('should accept YYYY if validity checks are suppressed', () => {
+      expect(formatDate('2013-12-31', `YYYY!/MM/dd`, 'en')).toEqual('2014-12-31');
     });
 
     // https://github.com/angular/angular/issues/53813
