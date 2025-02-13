@@ -89,10 +89,6 @@ export function formatDate(
   locale: string,
   timezone?: string,
 ): string {
-  if (typeof ngDevMode === 'undefined' || ngDevMode) {
-    assertValidDateFormat(format);
-  }
-
   let date = toDate(value);
   const namedFormat = getNamedFormat(locale, format);
   format = namedFormat || format;
@@ -121,15 +117,19 @@ export function formatDate(
   }
 
   let text = '';
+  const validity: DateFormatValidityState = {};
   parts.forEach((value) => {
     const dateFormatter = getDateFormatter(value);
     text += dateFormatter
-      ? dateFormatter(date, locale, dateTimezoneOffset)
+      ? dateFormatter(date, locale, dateTimezoneOffset, validity)
       : value === "''"
         ? "'"
         : value.replace(/(^'|'$)/g, '').replace(/''/g, "'");
   });
 
+  if (typeof ngDevMode === 'undefined' || ngDevMode) {
+    assertValidDateFormat(format, validity);
+  }
   return text;
 }
 
@@ -138,8 +138,8 @@ export function formatDate(
  * error if one is found (except for the case of all "Y", in which case we just
  * log a warning).  This should only be called in development mode.
  */
-function assertValidDateFormat(format: string) {
-  if (format.includes('Y') && !format.includes('w')) {
+function assertValidDateFormat(format: string, validity: DateFormatValidityState) {
+  if (validity.weekYear && !validity.week) {
     // "Y" indicates "week-based year", which differs from the actual calendar
     // year for a few days around Jan 1 most years.  Unless "w" is also
     // present (e.g. a date like "2024-W52") this is likely a mistake.  Users
@@ -512,7 +512,7 @@ export function getThursdayThisIsoWeek(datetime: Date) {
 }
 
 function weekGetter(size: number, monthBased = false): DateFormatter {
-  return function (date: Date, locale: string) {
+  return function (date: Date, locale: string, _, validity: DateFormatValidityState) {
     let result;
     if (monthBased) {
       const nbDaysBefore1stDayOfMonth =
@@ -520,6 +520,7 @@ function weekGetter(size: number, monthBased = false): DateFormatter {
       const today = date.getDate();
       result = 1 + Math.floor((today + nbDaysBefore1stDayOfMonth) / 7);
     } else {
+      validity.week = true;
       const thisThurs = getThursdayThisIsoWeek(date);
       // Some days of a year are part of next year according to ISO 8601.
       // Compute the firstThurs from the year of this week's Thursday
@@ -536,7 +537,8 @@ function weekGetter(size: number, monthBased = false): DateFormatter {
  * Returns a date formatter that provides the week-numbering year for the input date.
  */
 function weekNumberingYearGetter(size: number, trim = false): DateFormatter {
-  return function (date: Date, locale: string) {
+  return function (date: Date, locale: string, _, validity: DateFormatValidityState) {
+    validity.weekYear = true;
     const thisThurs = getThursdayThisIsoWeek(date);
     const weekNumberingYear = thisThurs.getFullYear();
     return padNumber(
@@ -548,7 +550,13 @@ function weekNumberingYearGetter(size: number, trim = false): DateFormatter {
   };
 }
 
-type DateFormatter = (date: Date, locale: string, offset: number) => string;
+interface DateFormatValidityState {
+  /** Whether the format uses week-based year 'Y' */
+  weekYear?: boolean;
+  /** Whether the format uses week-of-year 'w' */
+  week?: boolean;
+}
+type DateFormatter = (date: Date, locale: string, offset: number, validity: DateFormatValidityState) => string;
 
 const DATE_FORMATS: {[format: string]: DateFormatter} = {};
 
